@@ -88,7 +88,7 @@ with col_view:
         # Petición .select() directa en cada renderizado.
         # Esto garantiza la arquitectura stateless y lectura en tiempo real.
         # Se aplica un .limit(50) para proteger el rendimiento del frontend.
-        response = supabase.table(table_name).select("*").limit(50).execute()
+        response = supabase.table(table_name).select("*").limit(100).execute()
 
         # Extraemos la data del response
         datos_actuales = response.data
@@ -96,7 +96,7 @@ with col_view:
         if datos_actuales:
             # Mostramos los datos en una tabla interactiva propia de Streamlit
             st.dataframe(datos_actuales, use_container_width=True)
-            st.caption(f"Mostrando los últimos registros (Límite aplicado: 50) de la tabla `{table_name}`.")
+            st.caption(f"Mostrando los últimos registros (Límite aplicado: 100) de la tabla `{table_name}`.")
         else:
             st.info(f"La tabla `{table_name}` está conectada pero actualmente está vacía.")
 
