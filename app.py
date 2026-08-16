@@ -88,7 +88,7 @@ with col_view:
         # Petición .select() directa en cada renderizado.
         # Esto garantiza la arquitectura stateless y lectura en tiempo real.
         # Se aplica un .limit(50) para proteger el rendimiento del frontend.
-        response = supabase.table(table_name).select("*").limit(100).execute()
+        response = supabase.table(table_name).select("*").order("id", desc=False).limit(100).execute()
 
         # Extraemos la data del response
         datos_actuales = response.data
