@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Gestor de Base de Datos Supabase (Stateless)")
+st.title("Visor y Gestor de Datos")
 st.markdown("""
 Esta interfaz funciona exclusivamente como un visor. **No almacena ni cachea datos en memoria**.
 Todas las lecturas y escrituras se hacen en tiempo real directamente hacia Supabase.
