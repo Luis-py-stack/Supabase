@@ -11,10 +11,10 @@ st.set_page_config(
 )
 
 st.title("Visor y Gestor de Datos")
-st.markdown("""
-Esta interfaz funciona exclusivamente como un visor. **No almacena ni cachea datos en memoria**.
-Todas las lecturas y escrituras se hacen en tiempo real directamente hacia Supabase.
-""")
+#st.markdown("""
+#Esta interfaz funciona exclusivamente como un visor. **No almacena ni cachea datos en memoria**.
+#Todas las lecturas y escrituras se hacen en tiempo real directamente hacia Supabase.
+#""")
 
 # ==========================================
 # 1. Inputs de Configuración (Barra Lateral)
