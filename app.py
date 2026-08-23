@@ -106,17 +106,14 @@ with col_view:
     st.subheader("📊 Vista de Datos (Tiempo Real)")
 
     try:
-        # Petición .select() directa en cada renderizado ordenado por FOLIO.
-        # Esto garantiza la arquitectura stateless y lectura en tiempo real.
-        # Se aplica un .limit(100) para proteger el rendimiento del frontend.
         response = supabase.table(table_name).select("*").order("FOLIO", desc=False).execute()
 
         # Extraemos la data del response
         datos_actuales = response.data
 
         if datos_actuales:
-            # Mostramos los datos en una tabla interactiva propia de Streamlit
-            st.dataframe(datos_actuales, use_container_width=True)
+            # ¡Aquí está el cambio! Añadimos height=800 (puedes ajustar este número)
+            st.dataframe(datos_actuales, use_container_width=True, height=800)
             st.caption(f"Mostrando todos los registros de la tabla `{table_name}`.")
         else:
             st.info(f"La tabla `{table_name}` está conectada pero actualmente está vacía.")
