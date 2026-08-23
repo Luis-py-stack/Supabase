@@ -22,7 +22,7 @@ Todas las lecturas y escrituras se hacen en tiempo real directamente hacia Supab
 st.sidebar.header("🔑 Configuración de Conexión")
 supabase_url = st.sidebar.text_input("SUPABASE_URL", placeholder="https://xyz.supabase.co")
 supabase_key = st.sidebar.text_input("SUPABASE_KEY", type="password", placeholder="sb_secret_...")
-table_name = st.sidebar.text_input("TABLE_NAME", value="PRUEBA")
+table_name = st.sidebar.text_input("TABLE_NAME", value="Pantallas_De_Mcdonalds")
 
 # Verificación de credenciales
 if not supabase_url or not supabase_key or not table_name:
@@ -52,20 +52,34 @@ with col_form:
 
     # st.form agrupa los inputs y solo recarga la página al hacer submit
     with st.form("insert_form", clear_on_submit=True):
-        input_id = st.number_input("ID", min_value=1, step=1)
-        input_prueba = st.text_input("Prueba (Ej. Nombre)")
-        input_concepto = st.text_input("Concepto (Ej. Matemáticas)")
-        input_tipo = st.text_input("Tipo (Ej. Híbrido)")
+        input_folio = st.text_input("FOLIO")
+        input_area = st.text_input("AREA")
+        input_cliente = st.text_input("CLIENTE")
+        input_concepto = st.text_input("CONCEPTO")
+        input_clasificacion = st.text_input("CLASIFICACION")
+        input_vendedor = st.text_input("VENDEDOR")
+        input_f_visita = st.text_input("F_VISITA")
+        input_f_inicio = st.text_input("F_INICIO")
+        input_f_entrega = st.text_input("F_ENTREGA")
+        input_dias = st.number_input("DIAS", step=1, value=0)
+        input_avance = st.text_input("AVANCE")
 
         btn_submit = st.form_submit_button("Guardar en Supabase", type="primary")
 
         if btn_submit:
-            # Construcción del payload
+            # Construcción del payload respetando los tipos de la tabla
             data_to_insert = {
-                "id": input_id,
-                "prueba": input_prueba,
-                "concepto": input_concepto,
-                "tipo": input_tipo
+                "FOLIO": input_folio,
+                "AREA": input_area,
+                "CLIENTE": input_cliente,
+                "CONCEPTO": input_concepto,
+                "CLASIFICACION": input_clasificacion,
+                "VENDEDOR": input_vendedor,
+                "F_VISITA": input_f_visita,
+                "F_INICIO": input_f_inicio,
+                "F_ENTREGA": input_f_entrega,
+                "DIAS": input_dias,
+                "AVANCE": input_avance
             }
 
             # Ejecución de la inserción y manejo de errores
@@ -73,7 +87,7 @@ with col_form:
                 # Al ejecutar la inserción en el form, la vista lateral (col_view)
                 # se actualizará automáticamente con el nuevo registro al volver a renderizar.
                 response = supabase.table(table_name).insert(data_to_insert).execute()
-                st.success(f"¡Datos insertados correctamente! (ID: {input_id})")
+                st.success(f"¡Datos insertados correctamente! (FOLIO: {input_folio})")
             except Exception as e:
                 st.error("Ocurrió un error al insertar los datos.")
                 st.error(f"Detalle técnico: {e}")
@@ -85,10 +99,10 @@ with col_view:
     st.subheader("📊 Vista de Datos (Tiempo Real)")
 
     try:
-        # Petición .select() directa en cada renderizado.
+        # Petición .select() directa en cada renderizado ordenado por FOLIO.
         # Esto garantiza la arquitectura stateless y lectura en tiempo real.
-        # Se aplica un .limit(50) para proteger el rendimiento del frontend.
-        response = supabase.table(table_name).select("*").order("id", desc=False).limit(100).execute()
+        # Se aplica un .limit(100) para proteger el rendimiento del frontend.
+        response = supabase.table(table_name).select("*").order("FOLIO", desc=False).limit(100).execute()
 
         # Extraemos la data del response
         datos_actuales = response.data
