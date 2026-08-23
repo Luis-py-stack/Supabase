@@ -113,7 +113,7 @@ with col_view:
 
         if datos_actuales:
             # ¡Aquí está el cambio! Añadimos height=800 (puedes ajustar este número)
-            st.dataframe(datos_actuales, use_container_width=True, height=800)
+            st.dataframe(datos_actuales, use_container_width=True, height=1000)
             st.caption(f"Mostrando todos los registros de la tabla `{table_name}`.")
         else:
             st.info(f"La tabla `{table_name}` está conectada pero actualmente está vacía.")
