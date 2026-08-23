@@ -52,22 +52,32 @@ with col_form:
 
     # st.form agrupa los inputs y solo recarga la página al hacer submit
     with st.form("insert_form", clear_on_submit=True):
-        input_folio = st.text_input("FOLIO")
-        input_area = st.text_input("AREA")
-        input_cliente = st.text_input("CLIENTE")
-        input_concepto = st.text_input("CONCEPTO")
-        input_clasificacion = st.text_input("CLASIFICACION")
-        input_vendedor = st.text_input("VENDEDOR")
-        input_f_visita = st.text_input("F_VISITA")
-        input_f_inicio = st.text_input("F_INICIO")
-        input_f_entrega = st.text_input("F_ENTREGA")
-        input_dias = st.number_input("DIAS", step=1, value=0)
-        input_avance = st.text_input("AVANCE")
+        
+        # Creamos 2 sub-columnas dentro del formulario para ahorrar espacio vertical
+        f_col1, f_col2 = st.columns(2)
+        
+        with f_col1:
+            input_folio = st.text_input("FOLIO")
+            input_cliente = st.text_input("CLIENTE")
+            input_clasificacion = st.text_input("CLASIFICACION")
+            input_f_visita = st.text_input("F_VISITA")
+            input_f_entrega = st.text_input("F_ENTREGA")
+            input_avance = st.text_input("AVANCE")
+            
+        with f_col2:
+            input_area = st.text_input("AREA")
+            input_concepto = st.text_input("CONCEPTO")
+            input_vendedor = st.text_input("VENDEDOR")
+            input_f_inicio = st.text_input("F_INICIO")
+            input_dias = st.number_input("DIAS", step=1, value=0)
 
-        btn_submit = st.form_submit_button("Guardar en Supabase", type="primary")
+        st.markdown("<br>", unsafe_allow_html=True) # Un ligero respiro visual antes del botón
+        
+        # use_container_width=True hace que el botón abarque todo el ancho del formulario
+        btn_submit = st.form_submit_button("Guardar en Supabase", type="primary", use_container_width=True)
 
         if btn_submit:
-            # Construcción del payload respetando los tipos de la tabla
+            # Construcción del payload (INTACTO)
             data_to_insert = {
                 "FOLIO": input_folio,
                 "AREA": input_area,
@@ -82,16 +92,13 @@ with col_form:
                 "AVANCE": input_avance
             }
 
-            # Ejecución de la inserción y manejo de errores
+            # Ejecución de la inserción y manejo de errores (INTACTO)
             try:
-                # Al ejecutar la inserción en el form, la vista lateral (col_view)
-                # se actualizará automáticamente con el nuevo registro al volver a renderizar.
                 response = supabase.table(table_name).insert(data_to_insert).execute()
                 st.success(f"¡Datos insertados correctamente! (FOLIO: {input_folio})")
             except Exception as e:
                 st.error("Ocurrió un error al insertar los datos.")
                 st.error(f"Detalle técnico: {e}")
-
 # ==========================================
 # 3. Vista de los Datos Existentes
 # ==========================================
