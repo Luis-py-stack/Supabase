@@ -42,7 +42,7 @@ except Exception as e:
 st.divider()
 
 # Layout en dos columnas para mejor experiencia de usuario
-col_form, col_view = st.columns([1, 3], gap="large")
+col_form, col_view = st.columns([1, 4], gap="large")
 
 # ==========================================
 # 2. Área de Carga / Inserción de Datos
