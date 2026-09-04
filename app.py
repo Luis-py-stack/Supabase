@@ -99,67 +99,102 @@ with col_form:
                     st.error(f"Detalle técnico: {e}")
 
     # ----------------------------------------
-    # PESTAÑA: ACTUALIZAR (NUEVO)
+    # PESTAÑA: ACTUALIZAR (OPTIMIZADO CON DATA EDITOR)
     # ----------------------------------------
     with tab_update:
         st.subheader("Modificar Registro")
-        with st.form("update_form", clear_on_submit=True):
-            update_folio = st.text_input("🔍 FOLIO a modificar (Obligatorio)*")
-            st.caption("Llena **solo** los campos que deseas cambiar:")
-            
-            u_col1, u_col2 = st.columns(2)
-            with u_col1:
-                u_cliente = st.text_input("NUEVO CLIENTE")
-                u_clasificacion = st.text_input("NUEVA CLASIFICACION")
-                u_f_visita = st.text_input("NUEVA F_VISITA")
-                u_f_entrega = st.text_input("NUEVA F_ENTREGA")
-                u_avance = st.text_input("NUEVO AVANCE")
-            with u_col2:
-                u_area = st.text_input("NUEVA AREA")
-                u_concepto = st.text_input("NUEVO CONCEPTO")
-                u_vendedor = st.text_input("NUEVO VENDEDOR")
-                u_f_inicio = st.text_input("NUEVA F_INICIO")
-                u_dias = st.text_input("NUEVOS DIAS") # Usamos texto para permitir que se deje en blanco
 
-            st.markdown("<br>", unsafe_allow_html=True)
-            btn_update = st.form_submit_button("Actualizar en Supabase", type="primary", use_container_width=True)
+        # Mensaje de éxito persistido tras recarga limpia
+        if "update_success_msg" in st.session_state:
+            st.success(st.session_state.pop("update_success_msg"))
 
-            if btn_update:
-                if not update_folio:
-                    st.error("Debes ingresar el FOLIO que deseas modificar.")
-                else:
-                    # Construimos el payload dinámicamente solo con los campos que no están vacíos
-                    update_payload = {}
-                    if u_cliente: update_payload["CLIENTE"] = u_cliente
-                    if u_clasificacion: update_payload["CLASIFICACION"] = u_clasificacion
-                    if u_f_visita: update_payload["F_VISITA"] = u_f_visita
-                    if u_f_entrega: update_payload["F_ENTREGA"] = u_f_entrega
-                    if u_avance: update_payload["AVANCE"] = u_avance
-                    if u_area: update_payload["AREA"] = u_area
-                    if u_concepto: update_payload["CONCEPTO"] = u_concepto
-                    if u_vendedor: update_payload["VENDEDOR"] = u_vendedor
-                    if u_f_inicio: update_payload["F_INICIO"] = u_f_inicio
-                    if u_dias: 
-                        try:
-                            update_payload["DIAS"] = int(u_dias)
-                        except ValueError:
-                            st.warning("El campo DIAS no se actualizó porque no es un número entero.")
+        # Consulta en tiempo real de los datos existentes para el editor
+        try:
+            res_update = supabase.table(table_name).select("*").order("FOLIO", desc=False).execute()
+            data_to_edit = res_update.data
+        except Exception as e:
+            data_to_edit = []
+            st.error(f"Error al cargar registros para modificar: {e}")
 
-                    if not update_payload:
-                        st.warning("No ingresaste ningún dato nuevo para actualizar.")
+        if not data_to_edit:
+            st.info(f"La tabla `{table_name}` no tiene registros para modificar.")
+        else:
+            st.caption("Selecciona cualquier celda para modificarla o borrar su texto. Al terminar, presiona guardar.")
+
+            # Clave dinámica para reiniciar el buffer de edición tras cada guardado
+            editor_version = st.session_state.get("editor_version", 0)
+            editor_key = f"update_editor_{editor_version}"
+
+            with st.form("update_form"):
+                st.data_editor(
+                    data_to_edit,
+                    key=editor_key,
+                    disabled=["FOLIO"], # El FOLIO se protege como llave única
+                    use_container_width=True,
+                    height=450
+                )
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                btn_update = st.form_submit_button("Actualizar en Supabase", type="primary", use_container_width=True)
+
+                if btn_update:
+                    editor_state = st.session_state.get(editor_key, {})
+                    edited_rows = editor_state.get("edited_rows", {}) if isinstance(editor_state, dict) else getattr(editor_state, "edited_rows", {})
+
+                    if not edited_rows:
+                        st.warning("No realizaste ningún cambio en las celdas.")
                     else:
-                        try:
-                            response = supabase.table(table_name).update(update_payload).eq("FOLIO", update_folio).execute()
-                            if len(response.data) > 0:
-                                st.success(f"¡Registro {update_folio} actualizado correctamente!")
+                        actualizados = 0
+                        errores = []
+
+                        for r_idx, cambios in edited_rows.items():
+                            idx = int(r_idx)
+                            if 0 <= idx < len(data_to_edit):
+                                folio_reg = data_to_edit[idx].get("FOLIO")
+                                if folio_reg is not None:
+                                    update_payload = dict(cambios)
+                                    update_payload.pop("FOLIO", None)
+
+                                    # Asegurar compatibilidad de tipos en DIAS si fue editado o vaciado
+                                    if "DIAS" in update_payload:
+                                        val_dias = update_payload["DIAS"]
+                                        if val_dias == "" or val_dias is None:
+                                            update_payload["DIAS"] = None
+                                        else:
+                                            try:
+                                                update_payload["DIAS"] = int(val_dias)
+                                            except (ValueError, TypeError):
+                                                update_payload["DIAS"] = None
+
+                                    if update_payload:
+                                        try:
+                                            supabase.table(table_name).update(update_payload).eq("FOLIO", folio_reg).execute()
+                                            actualizados += 1
+                                        except Exception as e:
+                                            errores.append(f"FOLIO {folio_reg}: {e}")
+
+                        if actualizados > 0 and not errores:
+                            st.session_state["update_success_msg"] = f"¡Se actualizaron {actualizados} registro(s) correctamente en Supabase!"
+                            st.session_state["editor_version"] = editor_version + 1
+                            if hasattr(st, "rerun"):
+                                st.rerun()
                             else:
-                                st.error(f"No se encontró el FOLIO: {update_folio}")
-                        except Exception as e:
-                            st.error("Error al actualizar los datos.")
-                            st.error(f"Detalle técnico: {e}")
+                                st.experimental_rerun()
+                        elif actualizados > 0 and errores:
+                            st.session_state["editor_version"] = editor_version + 1
+                            st.warning(f"Se actualizaron {actualizados} registro(s), pero fallaron los siguientes:")
+                            for err in errores:
+                                st.error(err)
+                            if hasattr(st, "rerun"):
+                                st.rerun()
+                            else:
+                                st.experimental_rerun()
+                        else:
+                            for err in errores:
+                                st.error(f"Error al actualizar: {err}")
 
     # ----------------------------------------
-    # PESTAÑA: ELIMINAR (NUEVO)
+    # PESTAÑA: ELIMINAR (INTACTO)
     # ----------------------------------------
     with tab_delete:
         st.subheader("Borrar Registro")
