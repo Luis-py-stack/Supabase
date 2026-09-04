@@ -99,99 +99,91 @@ with col_form:
                     st.error(f"Detalle técnico: {e}")
 
     # ----------------------------------------
-    # PESTAÑA: ACTUALIZAR (OPTIMIZADO CON DATA EDITOR)
+    # PESTAÑA: ACTUALIZAR (SIN TABLA DUPLICADA)
     # ----------------------------------------
     with tab_update:
         st.subheader("Modificar Registro")
 
-        # Mensaje de éxito persistido tras recarga limpia
         if "update_success_msg" in st.session_state:
             st.success(st.session_state.pop("update_success_msg"))
 
-        # Consulta en tiempo real de los datos existentes para el editor
-        try:
-            res_update = supabase.table(table_name).select("*").order("FOLIO", desc=False).execute()
-            data_to_edit = res_update.data
-        except Exception as e:
-            data_to_edit = []
-            st.error(f"Error al cargar registros para modificar: {e}")
+        st.caption("Edita o borra las celdas que desees directamente en la tabla de la derecha (**Vista de Datos**).")
 
-        if not data_to_edit:
-            st.info(f"La tabla `{table_name}` no tiene registros para modificar.")
+        # Inspección del buffer de cambios de la tabla principal
+        editor_version = st.session_state.get("editor_version", 0)
+        editor_key = f"main_data_editor_{editor_version}"
+        editor_state = st.session_state.get(editor_key, {})
+        edited_rows = editor_state.get("edited_rows", {}) if isinstance(editor_state, dict) else getattr(editor_state, "edited_rows", {})
+
+        num_cambios = len(edited_rows)
+        if num_cambios > 0:
+            st.info(f"✏️ Hay cambios listos en **{num_cambios}** fila(s).")
         else:
-            st.caption("Selecciona cualquier celda para modificarla o borrar su texto. Al terminar, presiona guardar.")
+            st.caption("*(No hay cambios pendientes de guardar)*")
 
-            # Clave dinámica para reiniciar el buffer de edición tras cada guardado
-            editor_version = st.session_state.get("editor_version", 0)
-            editor_key = f"update_editor_{editor_version}"
+        st.markdown("<br>", unsafe_allow_html=True)
+        btn_update = st.button("Actualizar en Supabase", type="primary", use_container_width=True)
 
-            with st.form("update_form"):
-                st.data_editor(
-                    data_to_edit,
-                    key=editor_key,
-                    disabled=["FOLIO"], # El FOLIO se protege como llave única
-                    use_container_width=True,
-                    height=450
-                )
+        if btn_update:
+            if not edited_rows:
+                st.warning("No realizaste ningún cambio en las celdas de la tabla.")
+            else:
+                cached_data = st.session_state.get("cached_table_data")
+                if not cached_data:
+                    try:
+                        res = supabase.table(table_name).select("*").order("FOLIO", desc=False).execute()
+                        cached_data = res.data or []
+                    except Exception:
+                        cached_data = []
 
-                st.markdown("<br>", unsafe_allow_html=True)
-                btn_update = st.form_submit_button("Actualizar en Supabase", type="primary", use_container_width=True)
+                actualizados = 0
+                errores = []
 
-                if btn_update:
-                    editor_state = st.session_state.get(editor_key, {})
-                    edited_rows = editor_state.get("edited_rows", {}) if isinstance(editor_state, dict) else getattr(editor_state, "edited_rows", {})
+                for r_idx, cambios in edited_rows.items():
+                    idx = int(r_idx)
+                    if 0 <= idx < len(cached_data):
+                        folio_reg = cached_data[idx].get("FOLIO")
+                        if folio_reg is not None:
+                            update_payload = dict(cambios)
+                            update_payload.pop("FOLIO", None)
 
-                    if not edited_rows:
-                        st.warning("No realizaste ningún cambio en las celdas.")
+                            # Conversión de seguridad para campo numérico DIAS
+                            if "DIAS" in update_payload:
+                                val_dias = update_payload["DIAS"]
+                                if val_dias == "" or val_dias is None:
+                                    update_payload["DIAS"] = None
+                                else:
+                                    try:
+                                        update_payload["DIAS"] = int(val_dias)
+                                    except (ValueError, TypeError):
+                                        update_payload["DIAS"] = None
+
+                            if update_payload:
+                                try:
+                                    supabase.table(table_name).update(update_payload).eq("FOLIO", folio_reg).execute()
+                                    actualizados += 1
+                                except Exception as e:
+                                    errores.append(f"FOLIO {folio_reg}: {e}")
+
+                if actualizados > 0 and not errores:
+                    st.session_state["update_success_msg"] = f"¡Se actualizaron {actualizados} registro(s) en Supabase!"
+                    st.session_state["editor_version"] = editor_version + 1
+                    if hasattr(st, "rerun"):
+                        st.rerun()
                     else:
-                        actualizados = 0
-                        errores = []
-
-                        for r_idx, cambios in edited_rows.items():
-                            idx = int(r_idx)
-                            if 0 <= idx < len(data_to_edit):
-                                folio_reg = data_to_edit[idx].get("FOLIO")
-                                if folio_reg is not None:
-                                    update_payload = dict(cambios)
-                                    update_payload.pop("FOLIO", None)
-
-                                    # Asegurar compatibilidad de tipos en DIAS si fue editado o vaciado
-                                    if "DIAS" in update_payload:
-                                        val_dias = update_payload["DIAS"]
-                                        if val_dias == "" or val_dias is None:
-                                            update_payload["DIAS"] = None
-                                        else:
-                                            try:
-                                                update_payload["DIAS"] = int(val_dias)
-                                            except (ValueError, TypeError):
-                                                update_payload["DIAS"] = None
-
-                                    if update_payload:
-                                        try:
-                                            supabase.table(table_name).update(update_payload).eq("FOLIO", folio_reg).execute()
-                                            actualizados += 1
-                                        except Exception as e:
-                                            errores.append(f"FOLIO {folio_reg}: {e}")
-
-                        if actualizados > 0 and not errores:
-                            st.session_state["update_success_msg"] = f"¡Se actualizaron {actualizados} registro(s) correctamente en Supabase!"
-                            st.session_state["editor_version"] = editor_version + 1
-                            if hasattr(st, "rerun"):
-                                st.rerun()
-                            else:
-                                st.experimental_rerun()
-                        elif actualizados > 0 and errores:
-                            st.session_state["editor_version"] = editor_version + 1
-                            st.warning(f"Se actualizaron {actualizados} registro(s), pero fallaron los siguientes:")
-                            for err in errores:
-                                st.error(err)
-                            if hasattr(st, "rerun"):
-                                st.rerun()
-                            else:
-                                st.experimental_rerun()
-                        else:
-                            for err in errores:
-                                st.error(f"Error al actualizar: {err}")
+                        st.experimental_rerun()
+                elif actualizados > 0 and errores:
+                    st.session_state["editor_version"] = editor_version + 1
+                    st.warning(f"Se actualizaron {actualizados} registro(s), pero fallaron los siguientes:")
+                    for err in errores:
+                        st.error(err)
+                    if hasattr(st, "rerun"):
+                        st.rerun()
+                    else:
+                        st.experimental_rerun()
+                else:
+                    for err in errores:
+                        st.error(f"Error al actualizar: {err}")
 
     # ----------------------------------------
     # PESTAÑA: ELIMINAR (INTACTO)
@@ -219,7 +211,7 @@ with col_form:
                         st.error(f"Detalle técnico: {e}")
 
 # ==========================================
-# 3. Vista de los Datos Existentes (INTACTO)
+# 3. Vista de los Datos Existentes (EDITABLE DIRECTAMENTE)
 # ==========================================
 with col_view:
     st.subheader("📊 Vista de Datos (Tiempo Real)")
@@ -229,8 +221,19 @@ with col_view:
         datos_actuales = response.data
 
         if datos_actuales:
-            st.dataframe(datos_actuales, use_container_width=True, height=1000)
-            st.caption(f"Mostrando todos los registros de la tabla `{table_name}`.")
+            st.session_state["cached_table_data"] = datos_actuales
+
+            editor_version = st.session_state.get("editor_version", 0)
+            editor_key = f"main_data_editor_{editor_version}"
+
+            st.data_editor(
+                datos_actuales,
+                key=editor_key,
+                disabled=["FOLIO"],  # El FOLIO se mantiene como llave única inmutable
+                use_container_width=True,
+                height=1000
+            )
+            st.caption(f"Mostrando todos los registros de la tabla `{table_name}`. Modifica celdas directamente aquí.")
         else:
             st.info(f"La tabla `{table_name}` está conectada pero actualmente está vacía.")
 
