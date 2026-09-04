@@ -48,8 +48,20 @@ col_form, col_view = st.columns([1, 5.001], gap="large")
 # 2. Área de Carga / Modificación / Borrado
 # ==========================================
 with col_form:
-    # Usamos pestañas para mantener el diseño delgado y ordenado
-    tab_insert, tab_update, tab_delete = st.tabs(["➕ Insertar", "✏️ Actualizar", "🗑️ Eliminar"])
+    # Detección del estado de la pestaña para desbloquear edición solo en "Actualizar"
+    soporta_tabs_dinamicos = True
+    try:
+        tab_insert, tab_update, tab_delete = st.tabs(
+            ["➕ Insertar", "✏️ Actualizar", "🗑️ Eliminar"],
+            key="active_tab",
+            on_change="rerun"
+        )
+        modo_edicion = (st.session_state.get("active_tab") == "✏️ Actualizar") or getattr(tab_update, "open", False)
+    except TypeError:
+        # Fallback para entornos con versiones anteriores de Streamlit
+        tab_insert, tab_update, tab_delete = st.tabs(["➕ Insertar", "✏️ Actualizar", "🗑️ Eliminar"])
+        soporta_tabs_dinamicos = False
+        modo_edicion = False
 
     # ----------------------------------------
     # PESTAÑA: INSERTAR (INTACTO)
@@ -99,15 +111,22 @@ with col_form:
                     st.error(f"Detalle técnico: {e}")
 
     # ----------------------------------------
-    # PESTAÑA: ACTUALIZAR (SIN TABLA DUPLICADA)
+    # PESTAÑA: ACTUALIZAR (DESBLOQUEA LA TABLA PRINCIPAL)
     # ----------------------------------------
     with tab_update:
         st.subheader("Modificar Registro")
 
+        # Control adicional solo en caso de que la versión de Streamlit no sea reactiva en tabs
+        if not soporta_tabs_dinamicos:
+            modo_edicion = st.toggle("🔓 Desbloquear tabla para editar", value=False, key="toggle_unlock_table")
+
         if "update_success_msg" in st.session_state:
             st.success(st.session_state.pop("update_success_msg"))
 
-        st.caption("Edita o borra las celdas que desees directamente en la tabla de la derecha (**Vista de Datos**).")
+        if modo_edicion:
+            st.caption("🟢 **Tabla desbloqueada:** Edita o borra las celdas directamente en la tabla de la derecha y luego presiona el botón.")
+        else:
+            st.caption("🔒 La tabla está protegida. Entra en esta pestaña para habilitar su edición.")
 
         # Inspección del buffer de cambios de la tabla principal
         editor_version = st.session_state.get("editor_version", 0)
@@ -116,7 +135,7 @@ with col_form:
         edited_rows = editor_state.get("edited_rows", {}) if isinstance(editor_state, dict) else getattr(editor_state, "edited_rows", {})
 
         num_cambios = len(edited_rows)
-        if num_cambios > 0:
+        if num_cambios > 0 and modo_edicion:
             st.info(f"✏️ Hay cambios listos en **{num_cambios}** fila(s).")
         else:
             st.caption("*(No hay cambios pendientes de guardar)*")
@@ -125,7 +144,9 @@ with col_form:
         btn_update = st.button("Actualizar en Supabase", type="primary", use_container_width=True)
 
         if btn_update:
-            if not edited_rows:
+            if not modo_edicion:
+                st.warning("Debes estar en el modo 'Actualizar' para aplicar cambios.")
+            elif not edited_rows:
                 st.warning("No realizaste ningún cambio en las celdas de la tabla.")
             else:
                 cached_data = st.session_state.get("cached_table_data")
@@ -211,7 +232,7 @@ with col_form:
                         st.error(f"Detalle técnico: {e}")
 
 # ==========================================
-# 3. Vista de los Datos Existentes (EDITABLE DIRECTAMENTE)
+# 3. Vista de los Datos Existentes (BLOQUEADA / DESBLOQUEADA SEGÚN LA PESTAÑA)
 # ==========================================
 with col_view:
     st.subheader("📊 Vista de Datos (Tiempo Real)")
@@ -223,17 +244,23 @@ with col_view:
         if datos_actuales:
             st.session_state["cached_table_data"] = datos_actuales
 
-            editor_version = st.session_state.get("editor_version", 0)
-            editor_key = f"main_data_editor_{editor_version}"
+            if modo_edicion:
+                # MODO EDITABLE: Solo activo cuando se está en la pestaña "Actualizar"
+                editor_version = st.session_state.get("editor_version", 0)
+                editor_key = f"main_data_editor_{editor_version}"
 
-            st.data_editor(
-                datos_actuales,
-                key=editor_key,
-                disabled=["FOLIO"],  # El FOLIO se mantiene como llave única inmutable
-                use_container_width=True,
-                height=1000
-            )
-            st.caption(f"Mostrando todos los registros de la tabla `{table_name}`. Modifica celdas directamente aquí.")
+                st.data_editor(
+                    datos_actuales,
+                    key=editor_key,
+                    disabled=["FOLIO"],  # El FOLIO se mantiene como llave única inmutable
+                    use_container_width=True,
+                    height=1000
+                )
+                st.caption(f"✏️ Modo edición activo. Modifica celdas directamente en la tabla `{table_name}`.")
+            else:
+                # MODO SOLO LECTURA: Activo por defecto en "Insertar" o "Eliminar"
+                st.dataframe(datos_actuales, use_container_width=True, height=1000)
+                st.caption(f"Mostrando todos los registros de la tabla `{table_name}`. (Modo solo lectura)")
         else:
             st.info(f"La tabla `{table_name}` está conectada pero actualmente está vacía.")
 
