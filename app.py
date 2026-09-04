@@ -48,7 +48,7 @@ col_form, col_view = st.columns([1, 5.001], gap="large")
 # 2. Área de Carga / Modificación / Borrado
 # ==========================================
 with col_form:
-    # Detección del estado de la pestaña para desbloquear edición solo en "Actualizar"
+    # Detección del estado de la pestaña para desbloquear edición o eliminación
     soporta_tabs_dinamicos = True
     try:
         tab_insert, tab_update, tab_delete = st.tabs(
@@ -56,12 +56,15 @@ with col_form:
             key="active_tab",
             on_change="rerun"
         )
-        modo_edicion = (st.session_state.get("active_tab") == "✏️ Actualizar") or getattr(tab_update, "open", False)
+        active_tab_val = st.session_state.get("active_tab")
+        modo_edicion = (active_tab_val == "✏️ Actualizar") or getattr(tab_update, "open", False)
+        modo_eliminar = (active_tab_val == "🗑️ Eliminar") or getattr(tab_delete, "open", False)
     except TypeError:
         # Fallback para entornos con versiones anteriores de Streamlit
         tab_insert, tab_update, tab_delete = st.tabs(["➕ Insertar", "✏️ Actualizar", "🗑️ Eliminar"])
         soporta_tabs_dinamicos = False
         modo_edicion = False
+        modo_eliminar = False
 
     # ----------------------------------------
     # PESTAÑA: INSERTAR (INTACTO)
@@ -111,12 +114,11 @@ with col_form:
                     st.error(f"Detalle técnico: {e}")
 
     # ----------------------------------------
-    # PESTAÑA: ACTUALIZAR (DESBLOQUEA LA TABLA PRINCIPAL)
+    # PESTAÑA: ACTUALIZAR (DESBLOQUEA LA TABLA PARA EDICIÓN)
     # ----------------------------------------
     with tab_update:
         st.subheader("Modificar Registro")
 
-        # Control adicional solo en caso de que la versión de Streamlit no sea reactiva en tabs
         if not soporta_tabs_dinamicos:
             modo_edicion = st.toggle("🔓 Desbloquear tabla para editar", value=False, key="toggle_unlock_table")
 
@@ -128,7 +130,6 @@ with col_form:
         else:
             st.caption("🔒 La tabla está protegida. Entra en esta pestaña para habilitar su edición.")
 
-        # Inspección del buffer de cambios de la tabla principal
         editor_version = st.session_state.get("editor_version", 0)
         editor_key = f"main_data_editor_{editor_version}"
         editor_state = st.session_state.get(editor_key, {})
@@ -168,7 +169,6 @@ with col_form:
                             update_payload = dict(cambios)
                             update_payload.pop("FOLIO", None)
 
-                            # Conversión de seguridad para campo numérico DIAS
                             if "DIAS" in update_payload:
                                 val_dias = update_payload["DIAS"]
                                 if val_dias == "" or val_dias is None:
@@ -207,32 +207,89 @@ with col_form:
                         st.error(f"Error al actualizar: {err}")
 
     # ----------------------------------------
-    # PESTAÑA: ELIMINAR (INTACTO)
+    # PESTAÑA: ELIMINAR (MODO SELECCIÓN INTELIGENTE)
     # ----------------------------------------
     with tab_delete:
         st.subheader("Borrar Registro")
-        with st.form("delete_form", clear_on_submit=True):
-            delete_folio = st.text_input("🗑️ FOLIO a eliminar (Obligatorio)*")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            btn_delete = st.form_submit_button("Eliminar Definitivamente", type="primary", use_container_width=True)
 
-            if btn_delete:
-                if not delete_folio:
-                    st.error("Debes ingresar el FOLIO que deseas eliminar.")
-                else:
-                    try:
-                        response = supabase.table(table_name).delete().eq("FOLIO", delete_folio).execute()
-                        if len(response.data) > 0:
-                            st.success(f"¡El registro {delete_folio} ha sido eliminado!")
-                        else:
-                            st.warning(f"No se encontró el FOLIO: {delete_folio}")
-                    except Exception as e:
-                        st.error("Error al eliminar los datos.")
-                        st.error(f"Detalle técnico: {e}")
+        if not soporta_tabs_dinamicos:
+            modo_eliminar = st.toggle("🔓 Desbloquear modo eliminación", value=False, key="toggle_unlock_delete")
+
+        if "delete_success_msg" in st.session_state:
+            st.success(st.session_state.pop("delete_success_msg"))
+
+        if modo_eliminar:
+            st.caption("🔴 **Modo eliminación activo:** Marca la casilla a la izquierda de cada fila que deseas borrar en la tabla de la derecha y confirma abajo.")
+        else:
+            st.caption("🔒 La tabla está protegida. Entra en esta pestaña para habilitar la selección y borrado.")
+
+        # Identificador dinámico de selección para permitir reinicios limpios
+        delete_version = st.session_state.get("delete_version", 0)
+        delete_key = f"main_delete_selector_{delete_version}"
+        delete_state = st.session_state.get(delete_key, {})
+
+        if isinstance(delete_state, dict):
+            selected_indices = delete_state.get("selection", {}).get("rows", [])
+        else:
+            sel_obj = getattr(delete_state, "selection", {})
+            selected_indices = sel_obj.get("rows", []) if isinstance(sel_obj, dict) else getattr(sel_obj, "rows", [])
+
+        cached_data = st.session_state.get("cached_table_data")
+        if not cached_data:
+            try:
+                res = supabase.table(table_name).select("*").order("FOLIO", desc=False).execute()
+                cached_data = res.data or []
+                st.session_state["cached_table_data"] = cached_data
+            except Exception:
+                cached_data = []
+
+        # Extraer folios de las filas seleccionadas
+        folios_a_eliminar = []
+        for idx in selected_indices:
+            idx_int = int(idx)
+            if 0 <= idx_int < len(cached_data):
+                f = cached_data[idx_int].get("FOLIO")
+                if f is not None:
+                    folios_a_eliminar.append(f)
+
+        num_seleccionados = len(folios_a_eliminar)
+        if num_seleccionados > 0 and modo_eliminar:
+            st.warning(f"⚠️ Has marcado **{num_seleccionados}** fila(s) para borrar:")
+            st.write(", ".join([f"`{f}`" for f in folios_a_eliminar]))
+        else:
+            st.caption("*(No hay filas seleccionadas para eliminar)*")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        btn_delete = st.button("Confirmar Eliminación Definitivamente", type="primary", use_container_width=True)
+
+        if btn_delete:
+            if not modo_eliminar:
+                st.warning("Debes estar en el modo 'Eliminar' para borrar registros.")
+            elif not folios_a_eliminar:
+                st.warning("No has seleccionado ninguna fila en la tabla de la derecha.")
+            else:
+                try:
+                    if len(folios_a_eliminar) == 1:
+                        response = supabase.table(table_name).delete().eq("FOLIO", folios_a_eliminar[0]).execute()
+                    else:
+                        response = supabase.table(table_name).delete().in_("FOLIO", folios_a_eliminar).execute()
+
+                    st.session_state["delete_success_msg"] = f"¡Se eliminaron {len(folios_a_eliminar)} registro(s) correctamente de Supabase!"
+                    # Reiniciar estados para evitar desajuste de índices
+                    st.session_state["delete_version"] = delete_version + 1
+                    st.session_state["editor_version"] = st.session_state.get("editor_version", 0) + 1
+                    st.session_state.pop(delete_key, None)
+
+                    if hasattr(st, "rerun"):
+                        st.rerun()
+                    else:
+                        st.experimental_rerun()
+                except Exception as e:
+                    st.error("Error al eliminar los datos.")
+                    st.error(f"Detalle técnico: {e}")
 
 # ==========================================
-# 3. Vista de los Datos Existentes (BLOQUEADA / DESBLOQUEADA SEGÚN LA PESTAÑA)
+# 3. Vista de los Datos Existentes (ALTERNANCIA INTELIGENTE: LECTURA / EDICIÓN / ELIMINACIÓN)
 # ==========================================
 with col_view:
     st.subheader("📊 Vista de Datos (Tiempo Real)")
@@ -245,7 +302,7 @@ with col_view:
             st.session_state["cached_table_data"] = datos_actuales
 
             if modo_edicion:
-                # MODO EDITABLE: Solo activo cuando se está en la pestaña "Actualizar"
+                # 1. MODO EDITABLE: Solo cuando se está en la pestaña "Actualizar"
                 editor_version = st.session_state.get("editor_version", 0)
                 editor_key = f"main_data_editor_{editor_version}"
 
@@ -257,8 +314,24 @@ with col_view:
                     height=1000
                 )
                 st.caption(f"✏️ Modo edición activo. Modifica celdas directamente en la tabla `{table_name}`.")
+
+            elif modo_eliminar:
+                # 2. MODO ELIMINACIÓN: Solo cuando se está en la pestaña "Eliminar"
+                delete_version = st.session_state.get("delete_version", 0)
+                delete_key = f"main_delete_selector_{delete_version}"
+
+                st.dataframe(
+                    datos_actuales,
+                    key=delete_key,
+                    on_select="rerun",
+                    selection_mode="multi-row",
+                    use_container_width=True,
+                    height=1000
+                )
+                st.caption(f"🗑️ Modo eliminación activo. Marca las casillas de las filas que deseas borrar en `{table_name}`.")
+
             else:
-                # MODO SOLO LECTURA: Activo por defecto en "Insertar" o "Eliminar"
+                # 3. MODO SOLO LECTURA: Activo por defecto en "Insertar"
                 st.dataframe(datos_actuales, use_container_width=True, height=1000)
                 st.caption(f"Mostrando todos los registros de la tabla `{table_name}`. (Modo solo lectura)")
         else:
